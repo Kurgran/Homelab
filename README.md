@@ -1,4 +1,4 @@
-Salut ! Ici, je partage mes expérimentations en cybersécurité, administration réseau et DevSecOps.
+Ici, je partage mes expérimentations en cybersécurité, administration réseau.
 
 ---
 
