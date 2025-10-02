@@ -1,7 +1,7 @@
 # Homelab
 
 👋 Bienvenue sur mon Homelab !
-Salut ! Ici, je partage mes expérimentations en cybersécurité, administration réseau et DevSecOps.
+Salut ! Ici, je partage mes expérimentations en cybersécurité, administration réseau.
 🏠 Mon Setup
 J'ai monté un petit homelab pour apprendre et tester des trucs en conditions quasi-réelles :
 
