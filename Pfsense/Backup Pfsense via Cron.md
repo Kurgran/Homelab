@@ -475,19 +475,6 @@ Cette approche répond aux exigences de :
 
 ---
 
-## 📖 Références techniques
-
-- [pfSense Documentation](https://docs.netgate.com/pfsense/)
-- [Synology DSM Documentation](https://kb.synology.com/)
-- [OpenSSH Documentation](https://www.openssh.com/manual.html)
-- [FreeBSD Handbook](https://docs.freebsd.org/en/books/handbook/)
-- [NIST SP 800-34 Rev. 1 - Contingency Planning Guide](https://csrc.nist.gov/publications/detail/sp/800-34/rev-1/final)
-
----
-
-## 👤 Auteur
-
-**Projet de formation en cybersécurité** - Reconversion professionnelle
 
 ### Compétences démontrées
 
@@ -509,4 +496,3 @@ La mise en place de ce système de sauvegarde automatisé garantit la **résilie
 
 ---
 
-*Ce projet illustre une approche méthodique de résolution de problèmes techniques complexes, avec documentation complète pour faciliter la maintenance et le partage de connaissances.*
