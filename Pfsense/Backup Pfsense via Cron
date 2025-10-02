@@ -1,6 +1,21 @@
-# Automatisation de sauvegarde pfSense vers NAS Synology
+# 🔒 Automatisation de sauvegarde pfSense vers NAS Synology
 
-## Contexte et justification du projet
+> Projet de formation en cybersécurité - Mise en place d'un système de sauvegarde automatisé, fiable et testé pour garantir la résilience d'une infrastructure réseau.
+
+## 📋 Table des matières
+
+- [Contexte et justification](#-contexte-et-justification-du-projet)
+- [Architecture technique](#-architecture-technique)
+- [Problèmes rencontrés](#-problèmes-rencontrés-et-solutions)
+- [Script final](#-script-final)
+- [Configuration](#-configuration-étape-par-étape)
+- [Tests et validation](#-tests-et-validation)
+- [Maintenance](#-maintenance-et-surveillance)
+- [Leçons apprises](#-leçons-apprises)
+
+---
+
+## 🎯 Contexte et justification du projet
 
 ### La criticité des sauvegardes de configuration firewall
 
@@ -26,32 +41,26 @@ Ce projet s'inscrit dans une démarche de **sécurité proactive** et de **rési
 
 **Principes de sécurité appliqués :**
 
-1. **Automatisation** : Éliminer le facteur humain (oubli, négligence) en automatisant complètement le processus de sauvegarde via cron.
+1. **Automatisation** : Éliminer le facteur humain (oubli, négligence) en automatisant complètement le processus
+2. **Planification régulière** : Sauvegardes hebdomadaires programmées (dimanche 3h00) 
+3. **Stockage externalisé** : Sauvegarde sur un système distinct du pare-feu
+4. **Authentification forte** : Clés SSH RSA 2048 bits au lieu de mots de passe
+5. **Traçabilité** : Logs détaillés de chaque opération pour audit
+6. **Testabilité** : Validation manuelle et tests de restauration possibles
 
-2. **Planification régulière** : Sauvegardes hebdomadaires programmées (dimanche 3h00) pour limiter la fenêtre de perte de données à 7 jours maximum.
+### Technologies utilisées
 
-3. **Stockage externalisé** : Sauvegarde sur un système de stockage distinct (NAS) pour protéger contre la défaillance du pare-feu lui-même.
+- **pfSense 2.8.1** (FreeBSD)
+- **NAS Synology DSM**
+- **Shell script** (sh)
+- **SSH/SCP** avec authentification par clé publique
+- **Cron** pour l'automatisation
 
-4. **Authentification forte** : Utilisation de clés SSH RSA 2048 bits plutôt que des mots de passe, conformément aux bonnes pratiques de sécurité.
+---
 
-5. **Traçabilité** : Logs détaillés de chaque opération de sauvegarde pour audit et diagnostic.
+## 🏗️ Architecture technique
 
-6. **Testabilité** : Possibilité de valider manuellement le processus et de tester la restauration.
-
-Ce projet démontre également la capacité à travailler dans des environnements Unix hétérogènes (FreeBSD et Linux) et à résoudre des problèmes complexes d'intégration système.
-
-## Vue d'ensemble technique du projet
-
-**Technologies utilisées :**
-- pfSense 2.8.1 (FreeBSD)
-- NAS Synology DSM
-- Shell script (sh)
-- SSH/SCP avec authentification par clé publique
-- Cron pour l'automatisation
-
-## Architecture technique
-
-```
+```text
 ┌─────────────┐         SSH/SCP          ┌──────────────┐
 │   pfSense   │ ──────────────────────>  │ NAS Synology │
 │  Firewall   │   Port 2222             │   Storage    │
@@ -65,13 +74,15 @@ Ce projet démontre également la capacité à travailler dans des environnement
    dimanches 3h00
 ```
 
-## Problèmes rencontrés et solutions
+---
 
-### 1. Incompatibilité bash/sh sur pfSense
+## ⚠️ Problèmes rencontrés et solutions
+
+### 1️⃣ Incompatibilité bash/sh sur pfSense
 
 **Problème :** Le script initial utilisait `#!/bin/bash` mais bash n'est pas installé sur pfSense.
 
-**Solution :** Réécriture complète du script pour utiliser `/bin/sh` (shell POSIX standard) et adaptation de toutes les constructions bash-spécifiques.
+**Solution :** Réécriture complète pour `/bin/sh` (POSIX standard).
 
 ```bash
 # Avant (bash)
@@ -81,51 +92,61 @@ set -euo pipefail
 set -eu
 ```
 
-### 2. Échec du sous-système SFTP
+---
 
-**Problème :** Les versions récentes d'OpenSSH tentent d'utiliser SFTP par défaut, mais le NAS Synology bloque ce sous-système.
+### 2️⃣ Échec du sous-système SFTP
 
-```
+**Problème :** OpenSSH tente d'utiliser SFTP par défaut, mais le NAS Synology bloque ce sous-système.
+
+```text
 subsystem request failed on channel 0
 scp: Connection closed
 ```
 
-**Solution :** Forcer l'utilisation du protocole SCP legacy avec l'option `-O`.
+**Solution :** Forcer le protocole SCP legacy avec l'option `-O`.
 
 ```bash
 scp -O -P "${NAS_PORT}" -i "${SSH_KEY}" [...]
 ```
 
-### 3. Shell /sbin/nologin sur le NAS
+---
 
-**Problème majeur :** L'utilisateur de sauvegarde avait le shell `/sbin/nologin`, empêchant toute connexion SSH. De plus, Synology réinitialise ce paramètre à chaque redémarrage.
+### 3️⃣ Shell /sbin/nologin sur le NAS
+
+**Problème majeur :** L'utilisateur de sauvegarde avait le shell `/sbin/nologin`, empêchant toute connexion SSH. Synology réinitialise ce paramètre à chaque redémarrage.
 
 **Solution en deux étapes :**
 
-1. Modifier le shell manuellement :
+**Étape 1 - Modifier le shell manuellement :**
+
 ```bash
 sudo vi /etc/passwd
-# Changer /sbin/nologin en /bin/sh pour l'utilisateur de backup
+# Changer /sbin/nologin en /bin/sh pour l'utilisateur
 ```
 
-2. Créer un script de démarrage persistant :
+**Étape 2 - Créer un script de démarrage persistant :**
+
 ```bash
 #!/bin/sh
 # /usr/local/etc/rc.d/S99fix-backup-shell.sh
 sed -i "s|backup_user:x:\([0-9]*\):\([0-9]*\):\(.*\):/sbin/nologin|backup_user:x:\1:\2:\3:/bin/sh|" /etc/passwd
 ```
 
-### 4. Problèmes d'encodage UTF-8
+---
 
-**Problème :** L'édition des scripts avec MobaXterm (Windows) introduisait des caractères UTF-8 invisibles cassant l'exécution.
+### 4️⃣ Problèmes d'encodage UTF-8
 
-**Solution :** Toujours éditer les scripts directement sur pfSense avec l'éditeur `ee`.
+**Problème :** L'édition avec MobaXterm (Windows) introduisait des caractères UTF-8 invisibles cassant l'exécution.
 
-### 5. Environnement cron minimal
+**Solution :** Toujours éditer directement sur pfSense avec l'éditeur `ee`.
 
-**Problème :** Le script fonctionnait en manuel mais échouait via cron à cause de l'environnement minimal.
+---
 
-**Solution :** Export explicite de toutes les variables d'environnement nécessaires au début du script.
+### 5️⃣ Environnement cron minimal
+
+**Problème :** Le script fonctionnait en manuel mais échouait via cron (environnement minimal).
+
+**Solution :** Export explicite des variables d'environnement.
 
 ```bash
 export HOME=/root
@@ -135,7 +156,11 @@ export SHELL=/bin/sh
 export PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 ```
 
-## Script final
+---
+
+## 📝 Script final
+
+### Script de sauvegarde complet
 
 ```bash
 #!/bin/sh
@@ -212,9 +237,11 @@ fi
 log_message "=== Fin de sauvegarde ==="
 ```
 
-## Configuration étape par étape
+---
 
-### Sur pfSense
+## ⚙️ Configuration étape par étape
+
+### Configuration sur pfSense
 
 #### 1. Création du répertoire et génération des clés SSH
 
@@ -237,15 +264,17 @@ chmod +x /var/scripts/pfsense_backup.sh
 
 Via l'interface web pfSense :
 - System > Advanced > Cron
-- Minute : `0`
-- Hour : `3`
-- Day of Month : `*`
-- Month : `*`
-- Day of Week : `0` (dimanche)
-- User : `root`
-- Command : `/var/scripts/pfsense_backup.sh`
+- **Minute :** `0`
+- **Hour :** `3`
+- **Day of Month :** `*`
+- **Month :** `*`
+- **Day of Week :** `0` (dimanche)
+- **User :** `root`
+- **Command :** `/var/scripts/pfsense_backup.sh`
 
-### Sur le NAS Synology
+---
+
+### Configuration sur le NAS Synology
 
 #### 1. Création de l'utilisateur (via interface web)
 
@@ -271,9 +300,13 @@ sudo usermod -aG sshusers backup_user
 sudo vi /etc/passwd
 # Changer /sbin/nologin en /bin/sh pour backup_user
 
-# Créer le répertoire SSH et ajouter la clé publique
+# Créer le répertoire SSH
 sudo mkdir -p /var/services/homes/backup_user/.ssh
+
+# Ajouter la clé publique
 sudo bash -c 'echo "COLLER_LA_CLE_PUBLIQUE_ICI" > /var/services/homes/backup_user/.ssh/authorized_keys'
+
+# Permissions correctes
 sudo chmod 600 /var/services/homes/backup_user/.ssh/authorized_keys
 sudo chown backup_user:users /var/services/homes/backup_user/.ssh/authorized_keys
 ```
@@ -281,7 +314,7 @@ sudo chown backup_user:users /var/services/homes/backup_user/.ssh/authorized_key
 #### 4. Script de démarrage pour persistance du shell
 
 ```bash
-# Créer le script de correction automatique du shell
+# Créer le script de correction automatique
 sudo sh -c 'cat > /usr/local/etc/rc.d/S99fix-backup-shell.sh << "EOF"
 #!/bin/sh
 # Script pour corriger le shell de backup_user au démarrage
@@ -299,7 +332,9 @@ ls -la /volume1/Backups/pfSense/
 # Doit être accessible en écriture par backup_user
 ```
 
-## Tests et validation
+---
+
+## ✅ Tests et validation
 
 ### Test manuel du script
 
@@ -342,31 +377,13 @@ tail -20 /var/log/pfsense_backup.log
 ssh -p 2222 backup_user@10.0.50.100 "ls -ltr /volume1/Backups/pfSense/ | tail -5"
 ```
 
-## Leçons apprises
+---
 
-### 1. Incompatibilités entre environnements Unix
-Les différences entre FreeBSD (pfSense) et Linux (Synology DSM) nécessitent une attention particulière aux commandes et à leur syntaxe. Ce qui fonctionne sur un système peut échouer silencieusement sur l'autre.
-
-### 2. Importance de l'environnement d'exécution
-Les scripts cron s'exécutent dans un environnement minimal très différent d'une session interactive. Toutes les variables d'environnement nécessaires doivent être explicitement définies.
-
-### 3. Persistance des configurations sur Synology
-Synology régénère certains fichiers système au démarrage. Les modifications manuelles doivent être automatisées via des scripts de démarrage pour être persistantes.
-
-### 4. Encodage et outils d'édition
-L'édition de scripts Unix depuis Windows peut introduire des caractères invisibles qui cassent l'exécution. Toujours éditer directement sur le système cible avec des outils natifs.
-
-### 5. Diagnostic méthodique
-Face à des problèmes complexes, une approche systématique de diagnostic (test de chaque composant individuellement) permet d'identifier précisément la source du problème.
-
-### 6. Option -O cruciale pour SCP
-Les versions récentes d'OpenSSH tentent d'utiliser SFTP par défaut. L'option `-O` force le protocole SCP legacy, essentiel quand le sous-système SFTP est désactivé.
-
-## Maintenance et surveillance
+## 🔧 Maintenance et surveillance
 
 ### Rotation des sauvegardes
 
-Le script actuel accumule indéfiniment les sauvegardes. Pour éviter de saturer le NAS, créer un script de nettoyage :
+Le script accumule indéfiniment les sauvegardes. Script de nettoyage recommandé :
 
 ```bash
 #!/bin/sh
@@ -377,7 +394,7 @@ ssh -i /var/ssh_keys/nas_backup -p 2222 backup_user@10.0.50.100 \
 
 ### Alertes en cas d'échec
 
-Ajouter une notification par email en cas d'échec dans le script :
+Ajouter une notification par email :
 
 ```bash
 if [ $? -ne 0 ]; then
@@ -385,57 +402,95 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
-### Monitoring
+### Monitoring recommandé
 
-Surveiller régulièrement :
-- Logs : `/var/log/pfsense_backup.log`
-- Espace disque sur le NAS
-- Validité des sauvegardes (tester occasionnellement une restauration)
+- **Logs :** `/var/log/pfsense_backup.log`
+- **Espace disque** sur le NAS
+- **Test de restauration** occasionnel
 
-## Aspects sécurité et conformité
+---
+
+## 📚 Leçons apprises
+
+### 1. Incompatibilités entre environnements Unix
+
+Les différences entre FreeBSD (pfSense) et Linux (Synology DSM) nécessitent une attention particulière. Ce qui fonctionne sur un système peut échouer silencieusement sur l'autre.
+
+### 2. Importance de l'environnement d'exécution
+
+Les scripts cron s'exécutent dans un environnement minimal. Toutes les variables d'environnement nécessaires doivent être explicitement définies.
+
+### 3. Persistance des configurations sur Synology
+
+Synology régénère certains fichiers système au démarrage. Les modifications manuelles doivent être automatisées via des scripts de démarrage.
+
+### 4. Encodage et outils d'édition
+
+L'édition depuis Windows peut introduire des caractères invisibles. Toujours éditer directement sur le système cible.
+
+### 5. Diagnostic méthodique
+
+Une approche systématique (test de chaque composant individuellement) permet d'identifier précisément la source du problème.
+
+### 6. Option -O cruciale pour SCP
+
+Les versions récentes d'OpenSSH tentent d'utiliser SFTP par défaut. L'option `-O` force le protocole SCP legacy.
+
+---
+
+## 🔐 Aspects sécurité et conformité
 
 ### Sécurité de la solution
 
 **Points forts :**
-- Authentification par clé cryptographique (pas de mot de passe stocké)
-- Transport chiffré via SSH
-- Clé privée protégée par permissions 600
-- Logging complet pour audit
-- Séparation des privilèges (utilisateur dédié sur le NAS)
+- ✅ Authentification par clé cryptographique (pas de mot de passe stocké)
+- ✅ Transport chiffré via SSH
+- ✅ Clé privée protégée par permissions 600
+- ✅ Logging complet pour audit
+- ✅ Séparation des privilèges (utilisateur dédié)
 
 **Points d'attention :**
-- Clé SSH sans passphrase (nécessaire pour l'automatisation)
-- Option StrictHostKeyChecking désactivée (pour éviter les blocages cron)
-- Pas de chiffrement supplémentaire des fichiers de sauvegarde
+- ⚠️ Clé SSH sans passphrase (nécessaire pour l'automatisation)
+- ⚠️ Option StrictHostKeyChecking désactivée (pour éviter les blocages cron)
+- ⚠️ Pas de chiffrement supplémentaire des fichiers de sauvegarde
 
 ### Conformité réglementaire
 
-Cette approche répond aux exigences de plusieurs référentiels :
+Cette approche répond aux exigences de :
 
 - **ISO 27001** : Gestion de la continuité d'activité (A.17.1.2)
 - **NIST Cybersecurity Framework** : Fonction "Protect" - PR.IP-4 (Sauvegardes)
 - **RGPD** : Article 32 (Mesures de sécurité appropriées)
 
-## Améliorations futures possibles
+---
 
-1. **Chiffrement des sauvegardes** : Ajouter un chiffrement GPG avant transfert
+## 🚀 Améliorations futures possibles
+
+1. **Chiffrement des sauvegardes** : Ajouter GPG avant transfert
 2. **Sauvegarde différentielle** : Ne sauvegarder que si la configuration a changé
 3. **Sauvegardes multiples** : Vers plusieurs destinations (résilience)
-4. **Validation post-transfert** : Vérifier l'intégrité du fichier transféré avec checksum
-5. **Métriques** : Collecter des statistiques sur les sauvegardes (durée, taille, etc.)
-6. **Rotation intelligente** : Conserver 7 sauvegardes quotidiennes + 4 hebdomadaires + 12 mensuelles
+4. **Validation post-transfert** : Vérifier l'intégrité avec checksum
+5. **Métriques** : Statistiques sur les sauvegardes (durée, taille)
+6. **Rotation intelligente** : 7 quotidiennes + 4 hebdomadaires + 12 mensuelles
 
-## Conclusion
+---
 
-Ce projet démontre l'application concrète de principes de sécurité fondamentaux dans un contexte d'infrastructure réseau réelle. Au-delà de l'aspect technique, il illustre l'importance d'une approche proactive de la sécurité : anticiper les risques, automatiser les processus critiques, et documenter les procédures.
+## 📖 Références techniques
 
-La mise en place de ce système de sauvegarde automatisé garantit la résilience de l'infrastructure en cas d'incident majeur et s'inscrit dans une démarche plus large de gestion des risques et de continuité d'activité.
+- [pfSense Documentation](https://docs.netgate.com/pfsense/)
+- [Synology DSM Documentation](https://kb.synology.com/)
+- [OpenSSH Documentation](https://www.openssh.com/manual.html)
+- [FreeBSD Handbook](https://docs.freebsd.org/en/books/handbook/)
+- [NIST SP 800-34 Rev. 1 - Contingency Planning Guide](https://csrc.nist.gov/publications/detail/sp/800-34/rev-1/final)
 
+---
 
+## 👤 Auteur
 
-Projet de formation en cybersécurité - Reconversion professionnelle
+**Projet de formation en cybersécurité** - Reconversion professionnelle
 
-**Compétences démontrées :**
+### Compétences démontrées
+
 - Administration système Unix/FreeBSD
 - Scripting shell (sh)
 - Automatisation et planification (cron)
@@ -445,3 +500,13 @@ Projet de formation en cybersécurité - Reconversion professionnelle
 - Compréhension des enjeux de sécurité et de continuité d'activité
 
 ---
+
+## 🎯 Conclusion
+
+Ce projet démontre l'application concrète de principes de sécurité fondamentaux dans un contexte d'infrastructure réseau réelle. Au-delà de l'aspect technique, il illustre l'importance d'une **approche proactive de la sécurité** : anticiper les risques, automatiser les processus critiques, et documenter les procédures.
+
+La mise en place de ce système de sauvegarde automatisé garantit la **résilience de l'infrastructure** en cas d'incident majeur et s'inscrit dans une démarche plus large de gestion des risques et de continuité d'activité.
+
+---
+
+*Ce projet illustre une approche méthodique de résolution de problèmes techniques complexes, avec documentation complète pour faciliter la maintenance et le partage de connaissances.*
