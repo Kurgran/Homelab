@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # ========================================
+  # Ollama - Runtime LLM Local
+  # ========================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # Accès GPU Mac via Metal
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  # ========================================
+  # OpenWebUI - Interface ChatGPT-like
+  # ========================================
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    ports:
+      - "3001:8080"
+    volumes:
+      - openwebui_data:/app/backend/data
+    restart: unless-stopped
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_AUTH=true  # Authentification activée
+    depends_on:
+      - ollama
+
+  # ========================================
+  # ChromaDB - Base Vectorielle RAG
+  # ========================================
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    restart: unless-stopped
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - ALLOW_RESET=TRUE
+
+# ========================================
+# Volumes Docker Persistants
+# ========================================
+volumes:
+  ollama_data:
+    driver: local
+  openwebui_data:
+    driver: local
+  chromadb_data:
+    driver: local

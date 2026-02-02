@@ -1,0 +1,16 @@
+# ========================================
+# Dépendances Python - Stack IA Souveraine
+# ========================================
+
+# Client ChromaDB
+chromadb>=0.4.0
+
+# Modèles d'embeddings
+sentence-transformers>=2.2.0
+
+# Manipulation de fichiers
+pypdf2>=3.0.0          # Pour lire les PDF (optionnel)
+python-docx>=0.8.11    # Pour lire les DOCX (optionnel)
+
+# Utilitaires
+requests>=2.31.0

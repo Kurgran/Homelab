@@ -1,0 +1,67 @@
+# Configuration Ports Homelab - Documentation Technique
+
+## Projet monitoring-stack
+
+### Services de monitoring
+- **Grafana** : port 3000 (dashboards visualisation)
+  - URL : http://192.168.1.20:3000
+  - Authentification : admin / [password]
+  - Utilisation : Visualisation métriques Prometheus
+
+- **Prometheus** : port 9090 (collecte métriques)
+  - URL : http://192.168.1.20:9090
+  - Scrape interval : 15 secondes
+  - Rétention : 30 jours
+
+- **Node Exporter** : port 9100 (métriques système)
+  - Installé sur : Mac M4 Pro, NUC Proxmox, NAS Synology
+  - Métriques : CPU, RAM, disque, réseau
+
+## Projet ai-sovereign-stack
+
+### Stack IA locale
+- **Ollama API** : port 11434 (API LLM local)
+  - URL : http://192.168.1.50:11434
+  - Modèles : Mistral 7B, Llama 3.2
+  - API compatible OpenAI
+
+- **OpenWebUI** : port 3001 (interface ChatGPT-like)
+  - URL : http://192.168.1.50:3001
+  - Authentification multi-users
+  - RAG activé avec ChromaDB
+
+- **ChromaDB** : port 8000 (base vectorielle)
+  - Accès : localhost uniquement
+  - Collection : homelab_docs
+  - Stockage embeddings
+
+## Infrastructure réseau
+
+### Équipements principaux
+- **pfSense** : 192.168.1.1 (routeur/firewall)
+  - Interface web : https://192.168.1.1
+  - VPN WireGuard : port 51820
+  - OpenVPN : port 1194
+
+- **NAS Synology** : 192.168.1.10 (stockage)
+  - DSM : https://192.168.1.10:5001
+  - SSH : port 2222
+  - SMB : port 445
+
+- **NUC Proxmox** : 192.168.1.20 (virtualisation)
+  - Interface web : https://192.168.1.20:8006
+  - VMs : Windows Server, Linux, etc.
+
+## Services additionnels
+
+### Services web
+- Nginx reverse proxy : port 80/443
+- Portainer : port 9000 (gestion Docker)
+
+### Services de sauvegarde
+- Backups pfSense : cron dimanche 3h00 → NAS
+- Backups Docker volumes : quotidien → NAS
+- Snapshots Proxmox : hebdomadaire
+
+---
+*Documentation mise à jour : Janvier 2026*
