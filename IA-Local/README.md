@@ -1,4 +1,4 @@
-# 🤖 Stack IA Souveraine - Homelab
+#  Stack IA Local - Homelab
 
 > Projet de formation en cybersécurité - Déploiement d'une solution d'intelligence artificielle 100% locale et souveraine dans un environnement homelab, démontrant la maîtrise de l'infrastructure IA, Docker, et des principes de souveraineté des données.
 
@@ -25,7 +25,7 @@ Ce projet explore le déploiement d'un modèle de langage (LLM) en local dans un
 L'idée est de pouvoir interroger un modèle d'IA sur des documents personnels ou non
 
 **Problématiques adressées :**
-- **Souveraineté des données** : Aucune donnée envoyée à l'étranger (conforme Cloud Act)
+- **Souveraineté des données** : Aucune donnée envoyée à l'étranger 
 - **Conformité RGPD** : 100% on-premise, audit trail complet, droit d'effacement
 - **Coût maîtrisé** : Pas d'abonnement cloud, infrastructure existante valorisée
 - **Performance** : Latence minimale (local), pas de dépendance internet
