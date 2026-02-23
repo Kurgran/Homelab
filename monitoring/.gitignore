@@ -1,0 +1,15 @@
+# Données Docker — jamais versionnées (volumineuses et locales)
+stack/prometheus/data/
+stack/grafana/data/
+
+# Fichiers d'environnement — contiennent des secrets
+.env
+*.env
+.env.local
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Logs locaux
+*.log

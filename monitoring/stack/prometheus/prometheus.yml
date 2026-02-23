@@ -1,0 +1,140 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'homelab-monitoring'
+
+rule_files:
+  - "rules/*.yml"
+
+scrape_configs:
+
+  # ─────────────────────────────────────────────────
+  #  AUTO-MONITORING
+  # ─────────────────────────────────────────────────
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          hostname: 'prometheus'
+
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          hostname: 'grafana'
+
+  # ─────────────────────────────────────────────────
+  #  MAC MINI PRO — Node Exporter natif (Homebrew)
+  #  ⚠️ Remplacer <IP_MAC> par l'IP de ta machine hôte
+  # ─────────────────────────────────────────────────
+
+  - job_name: 'mac-m4-pro'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+        labels:
+          hostname: 'mac-m4-pro'
+          device_type: 'workstation'
+          model: 'Mac Mini Pro M4'
+
+  # ─────────────────────────────────────────────────
+  #  NAS SYNOLOGY DS723+
+  #  ⚠️ Remplacer <IP_NAS> par l'IP de ton NAS
+  # ─────────────────────────────────────────────────
+
+  - job_name: 'synology-node'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['<IP_NAS>:9100']
+        labels:
+          hostname: 'nas-synology'
+          device_type: 'nas'
+          model: 'DS723+'
+          exporter: 'node'
+
+  - job_name: 'synology-nas-snmp'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['<IP_NAS>']
+        labels:
+          hostname: 'nas-synology'
+          device_type: 'nas'
+          model: 'DS723+'
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+      auth: [public_v2]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: snmp-exporter:9116
+
+  # ─────────────────────────────────────────────────
+  #  ROUTEUR PFSENSE VP6630
+  #  ⚠️ Remplacer <IP_PFSENSE> par l'IP de ton routeur
+  # ─────────────────────────────────────────────────
+
+  - job_name: 'pfsense-node'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['<IP_PFSENSE>:9100']
+        labels:
+          hostname: 'pfsense-router'
+          device_type: 'router'
+          model: 'VP6630'
+          exporter: 'node'
+
+  - job_name: 'pfsense-router-snmp'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['<IP_PFSENSE>']
+        labels:
+          hostname: 'pfsense-router'
+          device_type: 'router'
+          model: 'VP6630'
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+      auth: [public_v2]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: snmp-exporter:9116
+
+  # ─────────────────────────────────────────────────
+  #  SWITCH MIKROTIK CRS310-8G+2S+
+  #  ⚠️ Remplacer <IP_MIKROTIK> par l'IP de ton switch
+  # ─────────────────────────────────────────────────
+
+  - job_name: 'mikrotik-switch-snmp'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    static_configs:
+      - targets: ['<IP_MIKROTIK>']
+        labels:
+          hostname: 'mikrotik-switch'
+          device_type: 'switch'
+          model: 'CRS310-8G+2S+'
+          location: 'homelab'
+          role: 'core-switch'
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+      auth: [public_v2]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: snmp-exporter:9116

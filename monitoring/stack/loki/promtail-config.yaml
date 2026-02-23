@@ -1,0 +1,38 @@
+server:
+  http_listen_address: 0.0.0.0   # Écoute sur toutes les interfaces Docker
+  http_listen_port: 9080
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  # ─────────────────────────────────────────────────
+  #  RÉCEPTION SYSLOG UDP
+  #  Sources : pfSense, NAS Synology
+  #  Protocole : UDP (fire-and-forget, ne ralentit pas le firewall)
+  # ─────────────────────────────────────────────────
+  - job_name: syslog
+    syslog:
+      listen_address: 0.0.0.0:1514
+      listen_protocol: udp       # UDP obligatoire pour pfSense et Synology
+      idle_timeout: 60s
+      label_structured_data: yes
+      labels:
+        type: network_device     # Label fixe commun à toutes les sources réseau
+    relabel_configs:
+      - source_labels: ['__syslog_message_hostname']
+        target_label: 'host'     # Transforme le nom d'hôte syslog en label Grafana
+
+  # ─────────────────────────────────────────────────
+  #  LOGS SYSTÈME LOCAUX (Mac)
+  #  Volume monté en lecture seule dans docker-compose.yml
+  # ─────────────────────────────────────────────────
+  - job_name: mac_system_logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: mac_system
+          host: mac-m4-pro
+          __path__: /var/log/*.log
