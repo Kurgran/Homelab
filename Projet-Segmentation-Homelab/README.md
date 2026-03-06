@@ -55,7 +55,7 @@ FREEBOX (Mode Bridge)
 
 ## Phases du projet
 
-| Phase | Intitulé | Statut |
+| Phase | Intitulé
 |---|---|---|
 | 1 | Audit et conception architecture
 | 2 | Configuration pfSense — VLANs, firewall, DNS
