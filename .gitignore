@@ -1,0 +1,115 @@
+# ============================================================
+# .gitignore — Homelab
+# ============================================================
+
+# ------------------------------------------------------------
+# macOS — IMPORTANT : couvre tous les sous-dossiers
+# ------------------------------------------------------------
+.DS_Store
+.DS_Store?
+**/.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
+
+# ------------------------------------------------------------
+# Windows
+# ------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ------------------------------------------------------------
+# Secrets & Identifiants — NE JAMAIS POUSSER
+# ------------------------------------------------------------
+*.env
+*.env.*
+.env.local
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.csr
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# ------------------------------------------------------------
+# Configs locales (IPs, mots de passe, tokens)
+# ------------------------------------------------------------
+*.local
+*.local.conf
+*.local.yaml
+*.local.yml
+config.local.*
+local_settings.*
+
+# ------------------------------------------------------------
+# Proxmox / pfSense / infra
+# ------------------------------------------------------------
+# Exports de VMs (volumineuses, pas leur place sur GitHub)
+*.tar.gz
+*.zip
+*.ova
+*.ovf
+*.vmdk
+*.qcow2
+
+# Backups Proxmox
+dump/
+backup/
+backups/
+
+# ------------------------------------------------------------
+# Docker
+# ------------------------------------------------------------
+.dockerenv
+docker-compose.override.yml
+volumes/
+
+# Données persistantes des conteneurs (volumineuses et locales)
+stack/prometheus/data/
+stack/grafana/data/
+
+# ------------------------------------------------------------
+# Python (scripts d'automatisation)
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# ------------------------------------------------------------
+# Éditeurs & IDEs
+# ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# ------------------------------------------------------------
+# Logs & fichiers temporaires
+# ------------------------------------------------------------
+*.log
+*.tmp
+*.bak
+
+# ------------------------------------------------------------
+# Notes personnelles (à ne pas versionner)
+# ------------------------------------------------------------
+notes_perso/
+todo_perso.md
+brouillon*.md
