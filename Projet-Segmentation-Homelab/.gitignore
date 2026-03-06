@@ -1,0 +1,105 @@
+# ============================================================
+# .gitignore — Projet Segmentation Homelab
+# ============================================================
+
+# ------------------------------------------------------------
+# macOS
+# ------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# ------------------------------------------------------------
+# Secrets & Identifiants — NE JAMAIS POUSSER
+# ------------------------------------------------------------
+*.env
+*.env.*
+.env.local
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.csr
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# ------------------------------------------------------------
+# Configs locales (IPs, mots de passe, tokens)
+# ------------------------------------------------------------
+*.local
+*.local.conf
+*.local.yaml
+*.local.yml
+config.local.*
+local_settings.*
+
+# ------------------------------------------------------------
+# Logs & fichiers temporaires
+# ------------------------------------------------------------
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# ------------------------------------------------------------
+# Proxmox / pfSense / infra
+# ------------------------------------------------------------
+# Exports de VMs (peuvent être très lourds)
+*.tar.gz
+*.zip
+*.ova
+*.ovf
+*.vmdk
+*.qcow2
+
+# Backups Proxmox
+dump/
+backup/
+backups/
+
+# ------------------------------------------------------------
+# Docker
+# ------------------------------------------------------------
+.dockerenv
+docker-compose.override.yml
+volumes/
+
+# ------------------------------------------------------------
+# Python (si scripts d'automatisation)
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# ------------------------------------------------------------
+# Éditeurs & IDEs
+# ------------------------------------------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ------------------------------------------------------------
+# Notes personnelles (à ne pas versionner)
+# ------------------------------------------------------------
+notes_perso/
+todo_perso.md
+brouillon*.md
