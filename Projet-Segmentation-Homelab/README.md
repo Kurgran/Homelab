@@ -55,13 +55,11 @@ FREEBOX (Mode Bridge)
 
 ## Phases du projet
 
-| Phase | Intitulé |
-|---|---|
-| 1 | Audit et conception architecture |
-| 2 | Configuration pfSense — VLANs, firewall, DNS |
-| 3 | MikroTik — VLAN Filtering, migration équipements |
-| 4 | Migration Proxmox + mise à jour stack monitoring |
-| 5 | Durcissement — 2FA, Suricata, pfBlockerNG |
+| Dossier | Phases | Contenu |
+|---|---|---|
+| [`Phase 1-3/`](./Phase%201-3/) | 1, 2, 3 | Audit réseau, configuration pfSense (aliases, firewall, DNS), MikroTik VLAN Filtering, migration équipements |
+| [`Phase 4-5/`](./Phase%204-5/) | 4, 5 | Migration Proxmox + Docker vers VLANs, durcissement (Suricata IPS, pfBlockerNG, 2FA TOTP) |
+
 ---
 
 ## Stack monitoring
