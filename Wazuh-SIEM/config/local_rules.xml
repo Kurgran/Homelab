@@ -1,0 +1,141 @@
+<!-- Local Rules — Wazuh SIEM Homelab -->
+<!-- Sources: pfSense firewall, Synology DSM         -->
+<!--                                                 -->
+<!-- Rule ID ranges:                                 -->
+<!--   100010-100014 : pfSense filterlog             -->
+<!--   100030-100032 : pfSense DHCP                  -->
+<!--   100040-100043 : pfSense Suricata IDS          -->
+<!--   100020, 100025, 100021-100024 : Synology DSM  -->
+<!--                                                 -->
+<!-- NOTE: <field name="X"> only works with custom   -->
+<!-- dynamic fields. For static Wazuh fields like    -->
+<!-- status/srcip/protocol, use <match> on the raw   -->
+<!-- log text instead.                               -->
+
+<!-- ================================================ -->
+<!-- pfSense filterlog                               -->
+<!-- ================================================ -->
+<group name="local,pfsense,firewall,">
+  <rule id="100010" level="3">
+    <decoded_as>pf-filterlog</decoded_as>
+    <description>pfSense: filterlog — $(action) $(protocol) $(srcip):$(srcport) -> $(dstip):$(dstport) [$(extra_data)]</description>
+    <group>pfsense,</group>
+  </rule>
+  <rule id="100011" level="3">
+    <if_sid>100010</if_sid>
+    <action>block</action>
+    <description>pfSense: traffic blocked — $(protocol) $(srcip):$(srcport) -> $(dstip):$(dstport) [$(extra_data)]</description>
+    <group>pfsense,firewall_drop,</group>
+  </rule>
+  <rule id="100012" level="3">
+    <if_sid>100010</if_sid>
+    <action>pass</action>
+    <description>pfSense: traffic allowed — $(protocol) $(srcip):$(srcport) -> $(dstip):$(dstport) [$(extra_data)]</description>
+    <group>pfsense,firewall_allow,</group>
+  </rule>
+  <rule id="100013" level="3">
+    <if_sid>100010</if_sid>
+    <protocol>tcp</protocol>
+    <action>block</action>
+    <description>pfSense: TCP blocked — $(srcip):$(srcport) -> $(dstip):$(dstport) [$(extra_data)]</description>
+    <group>pfsense,firewall_drop,</group>
+  </rule>
+  <rule id="100014" level="3">
+    <if_sid>100010</if_sid>
+    <protocol>udp</protocol>
+    <action>block</action>
+    <description>pfSense: UDP blocked — $(srcip):$(srcport) -> $(dstip):$(dstport) [$(extra_data)]</description>
+    <group>pfsense,firewall_drop,</group>
+  </rule>
+</group>
+
+<!-- ================================================ -->
+<!-- pfSense DHCP                                    -->
+<!-- ================================================ -->
+<group name="local,pfsense,dhcp,">
+  <rule id="100030" level="3">
+    <decoded_as>pfsense-dhcp-ack</decoded_as>
+    <description>pfSense DHCP: lease granted — $(dstip) assigned to $(extra_data) on $(status)</description>
+    <group>pfsense,dhcp,</group>
+  </rule>
+  <rule id="100031" level="3">
+    <decoded_as>pfsense-dhcp-request</decoded_as>
+    <description>pfSense DHCP: lease request — $(srcip) ($(extra_data)) on $(status)</description>
+    <group>pfsense,dhcp,</group>
+  </rule>
+  <rule id="100032" level="7">
+    <decoded_as>pfsense-dhcp-dup</decoded_as>
+    <description>pfSense DHCP: duplicate lease — IP $(dstip) already assigned, client $(extra_data) on $(status)</description>
+    <group>pfsense,dhcp,network_anomaly,</group>
+  </rule>
+</group>
+
+<!-- ================================================ -->
+<!-- pfSense Suricata IDS                            -->
+<!-- ================================================ -->
+<group name="local,pfsense,suricata,ids,">
+  <rule id="100040" level="6">
+    <decoded_as>pfsense-suricata</decoded_as>
+    <description>pfSense Suricata IDS: $(url) [$(extra_data)] — $(srcip):$(srcport) -> $(dstip):$(dstport)</description>
+    <group>pfsense,ids,intrusion_detection,</group>
+  </rule>
+  <rule id="100041" level="12">
+    <if_sid>100040</if_sid>
+    <match>\[Priority: 1\]</match>
+    <description>pfSense Suricata IDS critical (P1): $(url) — $(srcip):$(srcport) -> $(dstip):$(dstport)</description>
+    <group>pfsense,ids,intrusion_detection,attack,</group>
+  </rule>
+  <rule id="100042" level="8">
+    <if_sid>100040</if_sid>
+    <match>\[Priority: 2\]</match>
+    <description>pfSense Suricata IDS high (P2): $(url) — $(srcip):$(srcport) -> $(dstip):$(dstport)</description>
+    <group>pfsense,ids,intrusion_detection,attack,</group>
+  </rule>
+  <rule id="100043" level="10">
+    <if_sid>100040</if_sid>
+    <match>ET COMPROMISED</match>
+    <description>pfSense Suricata: known compromised host — $(srcip) -> $(dstip):$(dstport)</description>
+    <group>pfsense,ids,intrusion_detection,attack,malware,</group>
+  </rule>
+</group>
+
+<!-- ================================================ -->
+<!-- Synology DSM                                    -->
+<!-- ================================================ -->
+<group name="local,synology,nas,">
+  <rule id="100020" level="3">
+    <decoded_as>synology-dsm</decoded_as>
+    <description>Synology: DSM system event — $(extra_data) — $(status)</description>
+    <group>synology,</group>
+  </rule>
+  <rule id="100025" level="3">
+    <decoded_as>synology-auth</decoded_as>
+    <description>Synology: auth event — $(extra_data) — $(status)</description>
+    <group>synology,</group>
+  </rule>
+  <rule id="100021" level="3">
+    <if_sid>100025</if_sid>
+    <id>0x0001</id>
+    <description>Synology: login success — user $(srcuser) from $(srcip)</description>
+    <group>synology,authentication_success,</group>
+  </rule>
+  <rule id="100022" level="5">
+    <if_sid>100025</if_sid>
+    <id>0x0015</id>
+    <description>Synology: auth failure — user $(srcuser) from $(srcip)</description>
+    <group>synology,authentication_failed,</group>
+  </rule>
+  <rule id="100023" level="10" frequency="5" timeframe="120">
+    <if_matched_sid>100022</if_matched_sid>
+    <same_srcip/>
+    <description>Synology: brute force — 5+ failures in 2min from $(srcip) against user $(srcuser)</description>
+    <group>synology,authentication_failed,brute_force,attack,</group>
+  </rule>
+  <rule id="100024" level="12" frequency="8" timeframe="180">
+    <if_matched_sid>100022</if_matched_sid>
+    <same_srcip/>
+    <different_srcuser/>
+    <description>Synology: user enumeration — 8+ failures against different accounts from $(srcip)</description>
+    <group>synology,authentication_failed,brute_force,user_enumeration,attack,</group>
+  </rule>
+</group>

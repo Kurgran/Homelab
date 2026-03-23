@@ -1,0 +1,101 @@
+<!-- Local Decoders — Wazuh SIEM Homelab -->
+<!-- Sources: pfSense (RFC 5424 syslog), Synology DSM (RFC 5424 syslog) -->
+<!--                                                                     -->
+<!-- NOTE: Wazuh 4.14.3 bug — multiple PCRE2 children under the same    -->
+<!-- parent interfere with each other. Workaround: one parent per log    -->
+<!-- type, each with one child. More verbose but reliable.               -->
+
+<!-- ================================================ -->
+<!-- pfSense filterlog                                -->
+<!-- Specific prematch — must be listed first         -->
+<!-- ================================================ -->
+<decoder name="pf-filterlog">
+    <prematch type="pcre2">filterlog \d+ - - \d+,</prematch>
+</decoder>
+<decoder name="pf-filterlog-ipv4">
+    <parent>pf-filterlog</parent>
+    <regex type="pcre2" offset="after_parent">.*?,.*?,\d+,(\S+?),\w+,(block|pass),(in|out),4,\S*?,\S*?,\d+,\d+,\d+,\S*?,\d+,(\w+),\d+,(\d+\.\d+\.\d+\.\d+),(\d+\.\d+\.\d+\.\d+)(?:,(\d+),(\d+))?</regex>
+    <order>extra_data,action,status,protocol,srcip,dstip,srcport,dstport</order>
+</decoder>
+
+<!-- ================================================ -->
+<!-- pfSense DHCP — ACK (lease granted)              -->
+<!-- ================================================ -->
+<decoder name="pfsense-dhcp-ack">
+    <prematch type="pcre2">pfSense\.home\.arpa dhcpd \d+ - - DHCPACK</prematch>
+</decoder>
+<decoder name="pfsense-dhcp-ack-fields">
+    <parent>pfsense-dhcp-ack</parent>
+    <regex type="pcre2">DHCPACK on (\d+\.\d+\.\d+\.\d+) to (\S+) via (\S+)</regex>
+    <order>dstip,extra_data,status</order>
+</decoder>
+
+<!-- ================================================ -->
+<!-- pfSense DHCP — REQUEST (lease request)          -->
+<!-- ================================================ -->
+<decoder name="pfsense-dhcp-request">
+    <prematch type="pcre2">pfSense\.home\.arpa dhcpd \d+ - - DHCPREQUEST</prematch>
+</decoder>
+<decoder name="pfsense-dhcp-request-fields">
+    <parent>pfsense-dhcp-request</parent>
+    <regex type="pcre2">DHCPREQUEST for (\d+\.\d+\.\d+\.\d+) from (\S+) via (\S+)</regex>
+    <order>srcip,extra_data,status</order>
+</decoder>
+
+<!-- ================================================ -->
+<!-- pfSense DHCP — duplicate lease (IP conflict)    -->
+<!-- ================================================ -->
+<decoder name="pfsense-dhcp-dup">
+    <prematch type="pcre2">pfSense\.home\.arpa dhcpd \d+ - - uid lease</prematch>
+</decoder>
+<decoder name="pfsense-dhcp-dup-fields">
+    <parent>pfsense-dhcp-dup</parent>
+    <regex type="pcre2">uid lease (\d+\.\d+\.\d+\.\d+) for client (\S+) is duplicate on (\S+)</regex>
+    <order>dstip,extra_data,status</order>
+</decoder>
+
+<!-- ================================================ -->
+<!-- pfSense Suricata — IDS alerts                   -->
+<!-- Suricata sends via syslog (Send Alerts to       -->
+<!-- System Log enabled in Suricata interface config) -->
+<!-- Note: messages truncated to 480 bytes by FreeBSD -->
+<!-- ================================================ -->
+<decoder name="pfsense-suricata">
+    <prematch type="pcre2">pfSense\.home\.arpa suricata \d+ - -</prematch>
+</decoder>
+<decoder name="pfsense-suricata-alert">
+    <parent>pfsense-suricata</parent>
+    <regex type="pcre2">\[(\d+:\d+:\d+)\] (.+?) \[Classification: ([^\]]+)\] \[Priority: (\d+)\] \{(\w+)\} (\d+\.\d+\.\d+\.\d+):(\d+) -> (\d+\.\d+\.\d+\.\d+):(\d+)</regex>
+    <order>id,url,extra_data,status,protocol,srcip,srcport,dstip,dstport</order>
+</decoder>
+
+<!-- ================================================ -->
+<!-- Synology DSM — Auth logs                        -->
+<!-- Specific prematch (event_id present) — FIRST    -->
+<!-- ================================================ -->
+<decoder name="synology-auth">
+    <prematch>synolog@6574 event_id=</prematch>
+</decoder>
+<decoder name="synology-auth-ip">
+    <parent>synology-auth</parent>
+    <regex type="pcre2">event_id="(\S+)" synotype="(\w+)" username="([^"]+)".*?arg_3="(\d+\.\d+\.\d+\.\d+)".*?\]\s+(.+)$</regex>
+    <order>id,extra_data,srcuser,srcip,status</order>
+</decoder>
+<decoder name="synology-auth-basic">
+    <parent>synology-auth</parent>
+    <regex type="pcre2">event_id="(\S+)" synotype="(\w+)" username="([^"]+)".*?\]\s+(.+)$</regex>
+    <order>id,extra_data,srcuser,status</order>
+</decoder>
+
+<!-- ================================================ -->
+<!-- Synology DSM — System logs                      -->
+<!-- Generic prematch — fallback after synology-auth -->
+<!-- ================================================ -->
+<decoder name="synology-dsm">
+    <prematch>synolog@6574</prematch>
+</decoder>
+<decoder name="synology-dsm-system">
+    <parent>synology-dsm</parent>
+    <regex type="pcre2">synotype="(\w+)" luser="([^"]+)" event="([^"]+)"</regex>
+    <order>extra_data,srcuser,status</order>
+</decoder>
