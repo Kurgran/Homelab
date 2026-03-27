@@ -4,6 +4,8 @@ Wazuh 4.14.3 déployé sur une VM Debian (Proxmox, VLAN LAB). Trois sources de l
 
 L'installation en elle-même est bien documentée. Ce qui a pris du temps, c'est le décodage des logs pfSense : pfSense envoie du syslog RFC 5424, que Wazuh ne parse pas nativement. Cette page documente les problèmes rencontrés et les solutions.
 
+**Dernières mises à jour (mars 2026) :** mapping MITRE ATT&CK sur 12/19 règles (5 tactiques), rule 100039 pour silencer le bruit opérationnel Suricata, fix Vulnerability Detection (indexer-connector IP + credentials).
+
 ## Ce qui tourne
 
 | Source | Méthode | Ce qui est décodé |
@@ -42,16 +44,17 @@ Contournement : un parent par type de log, chacun avec un seul enfant. Plus verb
 | 100030 | pfSense DHCP ACK (bail accordé) | 3 |
 | 100031 | pfSense DHCP REQUEST | 3 |
 | 100032 | pfSense DHCP bail dupliqué (conflit IP) | 7 |
-| 100040 | Suricata IDS alerte (base) | 6 |
-| 100041 | Suricata IDS critique (Priorité 1) | 12 |
-| 100042 | Suricata IDS haute (Priorité 2) | 8 |
-| 100043 | Suricata hôte compromis connu (ET COMPROMISED) | 10 |
+| 100039 | Suricata message opérationnel — silencé (level 0) | 0 |
+| 100040 | Suricata IDS alerte (base) — T1071 C2 | 6 |
+| 100041 | Suricata IDS critique (Priorité 1) — T1190 | 12 |
+| 100042 | Suricata IDS haute (Priorité 2) — T1071 | 8 |
+| 100043 | Suricata hôte compromis connu (ET COMPROMISED) — T1071, T1059 | 10 |
 | 100020 | Synology événement système | 3 |
 | 100025 | Synology événement auth (base) | 3 |
-| 100021 | Synology connexion réussie | 3 |
-| 100022 | Synology échec d'authentification | 5 |
-| 100023 | Synology brute force (5+ échecs en 2 min, même IP) | 10 |
-| 100024 | Synology énumération utilisateurs (8+ échecs, comptes différents) | 12 |
+| 100021 | Synology connexion réussie — T1078 | 3 |
+| 100022 | Synology échec d'authentification — T1110 | 5 |
+| 100023 | Synology brute force (5+ échecs en 2 min, même IP) — T1110.001 | 10 |
+| 100024 | Synology énumération utilisateurs (8+ échecs, comptes différents) — T1087 | 12 |
 
 ## Fichiers
 
@@ -75,6 +78,26 @@ echo 'la ligne de log ici' | /var/ossec/bin/wazuh-logtest
 Les décodeurs natifs de Wazuh chargent avant `local_decoder.xml`. Si un décodeur built-in (comme `web-accesslog`) matche en premier, le décodeur custom ne sera jamais testé. C'est le cas des logs nginx de pfSense : `web-accesslog` les intercepte et extrait les mauvais champs. Ces logs restent en level 0 pour l'instant.
 
 `logall: yes` dans `ossec.conf` est indispensable pour voir tous les logs reçus dans `archives.log`, pas seulement ceux qui ont déclenché une alerte. Sans ça, déboguer un décodeur qui ne matche pas est beaucoup plus difficile.
+
+## Vulnerability Detection
+
+Activé sur l'agent Proxmox. La fonctionnalité utilise deux pipelines distincts :
+
+- **Filebeat** → index `wazuh-alerts-*` : alertes temps réel
+- **indexer-connector** → index `wazuh-states-vulnerabilities` : état des CVE par agent
+
+Le second pipeline échouait silencieusement. Symptôme : onglet "Vulnerabilities" vide dans le dashboard alors que l'agent était bien configuré. Cause : l'IP dans `/etc/wazuh-indexer/wazuh-indexer.yml` était `0.0.0.0` au lieu de l'IP réelle de l'indexer (`192.168.30.100`), et les credentials OpenSearch n'étaient pas dans le keystore.
+
+Fix :
+```bash
+# Corriger l'IP dans la config indexer-connector
+# Puis stocker les credentials
+/var/ossec/bin/wazuh-keystore -f indexer -k username -v admin
+/var/ossec/bin/wazuh-keystore -f indexer -k password -v <mot_de_passe>
+systemctl restart wazuh-manager
+```
+
+Résultat : 169 CVE détectées sur l'agent Proxmox, dont 26 corrigées après `apt upgrade`.
 
 ## Infrastructure
 
