@@ -41,6 +41,11 @@ id_rsa
 id_rsa.pub
 id_ed25519
 id_ed25519.pub
+# Clés SSH avec noms custom (ex : wazuh_ar_key, deploy_key, etc.)
+*_key
+*_key.pub
+# Dossiers .ssh embarqués dans le repo (ex : active-response/.ssh/)
+**/.ssh/
 
 # ------------------------------------------------------------
 # Configs locales (IPs, mots de passe, tokens)

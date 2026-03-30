@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # pfsense-block.sh — Active Response Wazuh -> pfSense via SSH + pfctl
-# Version : 1.0
+# Version : 1.1
 # Auteur  : Clément Appercel — https://github.com/Kurgran
 #
 # Ce script est exécuté par Wazuh Manager (location=local) quand une règle
@@ -12,18 +12,22 @@
 #
 # pfSense CE n'ayant pas d'API REST (réservée à pfSense Plus), le passage
 # par SSH est la seule option disponible sur pfSense Community Edition.
+# La connexion s'effectue en root avec une clé restreinte (authorized_keys
+# avec options command=, from=, restrict) — voir README pour les détails.
 #
 # Prérequis (voir ossec-active-response.conf pour la config ossec.conf) :
 #   1. Table pfctl "wazuh_blocked" créée sur pfSense (Firewall > Tables)
 #   2. Règle BLOCK IN from <wazuh_blocked> active sur l'interface WAN
-#   3. Clé SSH Ed25519 générée sur le Manager, user restreint sur pfSense
-#   4. Ce fichier placé dans /var/ossec/active-response/bin/ (chmod 750)
-#   5. Clé privée SSH dans /var/ossec/active-response/bin/.ssh/wazuh_ar_key
+#   3. Clé SSH Ed25519 générée sur le Manager, déployée dans /root/.ssh/authorized_keys
+#   4. Wrapper script /usr/local/bin/wazuh_pfctl.sh déployé sur pfSense (chmod 755)
+#   5. Ce fichier placé dans /var/ossec/active-response/bin/ (chmod 750, chown root:wazuh)
+#   6. Clé privée SSH dans /var/ossec/active-response/bin/.ssh/wazuh_ar_key (chown wazuh:wazuh)
 # =============================================================================
 
 # --- Configuration -----------------------------------------------------------
-PFSENSE_HOST="192.168.20.1"        # IP de pfSense sur le réseau de management
-PFSENSE_USER="wazuh_ar"            # Utilisateur SSH restreint créé sur pfSense
+PFSENSE_HOST="192.168.20.1"        # IP de pfSense (interface de management)
+PFSENSE_USER="root"                # pfSense CE : pas de sudo/doas, connexion root obligatoire
+PFSENSE_PORT="22"                  # Port SSH de pfSense (changer si port non standard)
 SSH_KEY="/var/ossec/active-response/bin/.ssh/wazuh_ar_key"
 PFCTL_TABLE="wazuh_blocked"        # Nom de la table pfctl dans pfSense
 LOG_FILE="/var/ossec/logs/active-responses.log"
@@ -80,6 +84,7 @@ log "Action : $ACTION | IP : $SRCIP"
 # --- Exécution ---------------------------------------------------------------
 if [ "$ACTION" = "add" ]; then
     RESULT=$(ssh -i "$SSH_KEY" \
+        -p "$PFSENSE_PORT" \
         -o StrictHostKeyChecking=no \
         -o ConnectTimeout=5 \
         -o BatchMode=yes \
@@ -94,6 +99,7 @@ if [ "$ACTION" = "add" ]; then
 
 elif [ "$ACTION" = "delete" ]; then
     RESULT=$(ssh -i "$SSH_KEY" \
+        -p "$PFSENSE_PORT" \
         -o StrictHostKeyChecking=no \
         -o ConnectTimeout=5 \
         -o BatchMode=yes \

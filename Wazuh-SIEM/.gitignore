@@ -3,3 +3,11 @@ linkedin-post.md
 *-linkedin.md
 *-post.md
 .DS_Store
+
+# Clés SSH (ne jamais pousser les clés privées)
+**/.ssh/
+*_key
+*_key.pub
+
+# Logs Active Response locaux
+active-responses.log

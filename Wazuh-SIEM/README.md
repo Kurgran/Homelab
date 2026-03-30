@@ -4,7 +4,7 @@ Wazuh 4.14.3 déployé sur une VM Debian (Proxmox, VLAN LAB). Trois sources de l
 
 L'installation en elle-même est bien documentée. Ce qui a pris du temps, c'est le décodage des logs pfSense : pfSense envoie du syslog RFC 5424, que Wazuh ne parse pas nativement. Cette page documente les problèmes rencontrés et les solutions.
 
-**Dernières mises à jour (mars 2026) :** mapping MITRE ATT&CK sur 12/19 règles (5 tactiques), rule 100039 pour silencer le bruit opérationnel Suricata, fix Vulnerability Detection (indexer-connector IP + credentials).
+**Dernières mises à jour (mars 2026) :** mapping MITRE ATT&CK sur 12/19 règles (5 tactiques), rule 100039 pour silencer le bruit opérationnel Suricata, fix Vulnerability Detection (indexer-connector IP + credentials), Active Response SSH + pfctl opérationnel.
 
 ## Ce qui tourne
 
@@ -22,7 +22,7 @@ pfSense envoie ses logs au format RFC 5424 :
 1 2026-03-23T10:56:43.099591+01:00 pfSense.home.arpa dhcpd 44738 - - DHCPACK on 192.168.40.103 to 9c:9e:6e:65:72:a4 via igc1.40
 ```
 
-Le pré-décodeur natif de Wazuh attend du RFC 3164 (sans le `1` en tête, sans timestamp ISO). Résultat : tous les logs pfSense autres que filterlog arrivent dans `archives.log` et n'y restent, sans déclencher aucune alerte.
+Le pré-décodeur natif de Wazuh attend du RFC 3164 (sans le `1` en tête, sans timestamp ISO). Résultat : tous les logs pfSense autres que filterlog arrivent dans `archives.log` sans déclencher aucune alerte.
 
 La solution est un décodeur parent custom qui matche l'enveloppe RFC 5424, avec des enfants spécifiques par type de log.
 
@@ -61,7 +61,7 @@ Contournement : un parent par type de log, chacun avec un seul enfant. Plus verb
 ```
 config/
 ├── local_decoder.xml    # Décodeurs custom pfSense (RFC 5424) et Synology DSM
-└── local_rules.xml      # Règles custom — à copier dans /var/ossec/etc/rules/
+└── local_rules.xml      # Règles custom, à copier dans /var/ossec/etc/rules/
 ```
 
 Les deux fichiers vont dans `/var/ossec/etc/` sur la VM Wazuh manager. Après toute modification : `systemctl restart wazuh-manager`.
@@ -83,10 +83,10 @@ Les décodeurs natifs de Wazuh chargent avant `local_decoder.xml`. Si un décode
 
 Activé sur l'agent Proxmox. La fonctionnalité utilise deux pipelines distincts :
 
-- **Filebeat** → index `wazuh-alerts-*` : alertes temps réel
-- **indexer-connector** → index `wazuh-states-vulnerabilities` : état des CVE par agent
+- **Filebeat** vers index `wazuh-alerts-*` : alertes temps réel
+- **indexer-connector** vers index `wazuh-states-vulnerabilities` : état des CVE par agent
 
-Le second pipeline échouait silencieusement. Symptôme : onglet "Vulnerabilities" vide dans le dashboard alors que l'agent était bien configuré. Cause : l'IP dans `/etc/wazuh-indexer/wazuh-indexer.yml` était `0.0.0.0` au lieu de l'IP réelle de l'indexer (`192.168.30.100`), et les credentials OpenSearch n'étaient pas dans le keystore.
+Le second pipeline échouait silencieusement. Symptôme : onglet "Vulnerabilities" vide dans le dashboard alors que l'agent était bien configuré. Deux causes : l'IP dans la config `ossec.conf` était `0.0.0.0` au lieu de l'IP réelle de l'indexer, et les credentials OpenSearch n'étaient pas dans le keystore.
 
 Fix :
 ```bash
@@ -101,14 +101,17 @@ Résultat : 169 CVE détectées sur l'agent Proxmox, dont 26 corrigées après `
 
 ## Active Response — Blocage automatique via pfSense + pfctl
 
-Wazuh déclenche automatiquement un blocage IP sur pfSense quand une règle de level ≥ 10 fire. Cela transforme le SIEM passif en SOAR : pas d'intervention manuelle pour les attaques détectées.
+Wazuh déclenche automatiquement un blocage IP sur pfSense quand une règle de level >= 10 fire. Le SIEM devient actif : pas d'intervention manuelle pour les attaques détectées.
 
 **Pourquoi SSH et pas l'API pfSense ?**
-pfSense CE n'a pas d'API REST (réservée à pfSense Plus, payant). La connexion se fait via SSH avec une clé Ed25519 dédiée et un utilisateur restreint sur pfSense. Le Manager Wazuh est la seule machine avec un accès SSH au firewall.
+pfSense CE n'a pas d'API REST (réservée à pfSense Plus, payant). La connexion se fait via SSH avec une clé Ed25519 dédiée. Le Manager Wazuh est la seule machine avec un accès SSH au firewall.
+
+**Pourquoi root et pas un utilisateur dédié ?**
+pfSense CE n'embarque ni sudo ni doas. La commande `pfctl` exige les droits root. La sécurité est assurée par trois restrictions dans `authorized_keys` : `from="<IP_WAZUH>"` (seule IP autorisée), `command="/usr/local/bin/wazuh_pfctl.sh"` (seul script exécutable), `restrict` (pas de shell interactif, pas de forwarding). Le wrapper script filtre ensuite les commandes pfctl autorisées.
 
 **Mécanisme :**
 
-1. Règle level ≥ 10 fire (brute force, Suricata Priority 1...)
+1. Règle level >= 10 fire (brute force, Suricata Priority 1...)
 2. Wazuh Manager exécute `pfsense-block.sh` en local (`location=local`)
 3. Le script se connecte à pfSense en SSH
 4. Il ajoute l'IP dans la table pfctl `wazuh_blocked`
@@ -128,20 +131,29 @@ chown root:wazuh /var/ossec/active-response/bin/pfsense-block.sh
 # 2. Créer le répertoire pour la clé SSH
 mkdir -p /var/ossec/active-response/bin/.ssh
 chmod 700 /var/ossec/active-response/bin/.ssh
+chown wazuh:wazuh /var/ossec/active-response/bin/.ssh
 
 # 3. Générer la clé SSH dédiée (sur le Manager)
 ssh-keygen -t ed25519 -f /var/ossec/active-response/bin/.ssh/wazuh_ar_key -N "" -C "wazuh-active-response"
 chmod 600 /var/ossec/active-response/bin/.ssh/wazuh_ar_key
+chown wazuh:wazuh /var/ossec/active-response/bin/.ssh/wazuh_ar_key
 
-# 4. Déployer la clé publique sur pfSense (user wazuh_ar)
-# Créer l'user dans pfSense : System > User Manager > Add
-# Coller le contenu de wazuh_ar_key.pub dans le champ "Authorized SSH Keys"
+# 4. Déployer le wrapper script sur pfSense (créer avec ee ou vi)
+#    Contenu : active-response/wazuh_pfctl.sh
+#    Destination sur pfSense : /usr/local/bin/wazuh_pfctl.sh
+#    Permissions : chmod 755 /usr/local/bin/wazuh_pfctl.sh
 
-# 5. Tester la connexion SSH avant tout
-ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key wazuh_ar@192.168.20.1 \
+# 5. Déployer la clé publique sur pfSense
+#    Ajouter dans /root/.ssh/authorized_keys avec les restrictions :
+#    command="/usr/local/bin/wazuh_pfctl.sh",from="<IP_WAZUH_MANAGER>",restrict ssh-ed25519 AAAA...
+
+# 6. Tester la connexion SSH avant tout
+ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key \
+    -p <PORT_SSH_PFSENSE> \
+    root@<IP_PFSENSE> \
     "pfctl -t wazuh_blocked -T show"
 
-# 6. Ajouter les blocs ossec.conf (voir active-response/ossec-active-response.conf)
+# 7. Ajouter les blocs ossec.conf (voir active-response/ossec-active-response.conf)
 systemctl restart wazuh-manager
 ```
 
@@ -149,27 +161,33 @@ systemctl restart wazuh-manager
 
 Dans pfSense : Firewall > Tables > Add
 - Name : `wazuh_blocked`
-- Description : `Wazuh Active Response — IPs bloquées automatiquement`
+- Description : `Wazuh Active Response, IPs bloquées automatiquement`
 
 Puis ajouter la règle : Firewall > Rules > WAN > Add
 - Action : Block
 - Source : `wazuh_blocked` (table)
-- Description : `Wazuh AR — Block IPs from wazuh_blocked table`
+- Description : `Wazuh AR, Block IPs from wazuh_blocked table`
 
 **Vérification manuelle :**
 
 ```bash
-# Tester le blocage d'une IP fictive
-ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key wazuh_ar@192.168.20.1 \
-    "pfctl -t wazuh_blocked -T add 1.2.3.4"
+# Tester le blocage d'une IP de test (plage de documentation RFC 5737)
+ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key \
+    -p <PORT_SSH_PFSENSE> \
+    root@<IP_PFSENSE> \
+    "pfctl -t wazuh_blocked -T add 203.0.113.1"
 
 # Vérifier la table
-ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key wazuh_ar@192.168.20.1 \
+ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key \
+    -p <PORT_SSH_PFSENSE> \
+    root@<IP_PFSENSE> \
     "pfctl -t wazuh_blocked -T show"
 
 # Débloquer
-ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key wazuh_ar@192.168.20.1 \
-    "pfctl -t wazuh_blocked -T delete 1.2.3.4"
+ssh -i /var/ossec/active-response/bin/.ssh/wazuh_ar_key \
+    -p <PORT_SSH_PFSENSE> \
+    root@<IP_PFSENSE> \
+    "pfctl -t wazuh_blocked -T delete 203.0.113.1"
 
 # Logs Active Response côté Manager
 tail -f /var/ossec/logs/active-responses.log
@@ -179,13 +197,14 @@ tail -f /var/ossec/logs/active-responses.log
 
 ```
 active-response/
-├── pfsense-block.sh              # Script bash — actions add/delete via SSH
+├── pfsense-block.sh              # Script bash, actions add/delete via SSH
+├── wazuh_pfctl.sh                # Wrapper de sécurité à déployer sur pfSense
 └── ossec-active-response.conf    # Blocs à ajouter dans ossec.conf
 ```
 
 ## Infrastructure
 
-- VM Wazuh : Debian 12, 4 vCPU, 8 Go RAM, VLAN LAB (192.168.30.x)
+- VM Wazuh : Debian 12, 4 vCPU, 8 Go RAM, VLAN LAB
 - Hôte Proxmox : ASUS NUC 14 Pro+ (96 Go DDR5), agent Wazuh installé directement
 - NAS : Synology DS723+, transfert syslog configuré dans DSM
 - Firewall : pfSense CE 2.8.x, transfert syslog vers Wazuh UDP 514, format RFC 5424
