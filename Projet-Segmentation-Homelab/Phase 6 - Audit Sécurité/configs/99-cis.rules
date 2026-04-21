@@ -1,0 +1,43 @@
+# CIS Debian Linux 12 Benchmark — Règles auditd
+# Déployer dans /etc/audit/rules.d/99-cis.rules
+# Charger avec : augenrules --load
+# Vérifier avec : auditctl -l
+#
+# IMPORTANT : les commentaires doivent être sur des lignes séparées.
+# Un commentaire inline (après une règle sur la même ligne) fait silencieusement
+# rejeter la règle par auditd. Résultat : augenrules --load affiche "No rules".
+
+# --- Fichiers identité et authentification ---
+-w /etc/passwd -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/gshadow -p wa -k identity
+-w /etc/sudoers -p wa -k scope
+-w /etc/sudoers.d/ -p wa -k scope
+
+# --- Connexions et sessions ---
+-w /var/log/lastlog -p wa -k logins
+-w /var/run/faillock -p wa -k logins
+
+# --- Changements de permissions et propriété (appels système 64 bits) ---
+-a always,exit -F arch=b64 -S chmod,fchmod,fchmodat -F auid>=1000 -F auid!=unset -k perm_mod
+-a always,exit -F arch=b64 -S chown,fchown,lchown,fchownat -F auid>=1000 -F auid!=unset -k perm_mod
+-a always,exit -F arch=b64 -S setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F auid>=1000 -F auid!=unset -k perm_mod
+
+# --- Tentatives d'accès refusées ---
+-a always,exit -F arch=b64 -S creat,open,openat,truncate,ftruncate -F exit=-EACCES -F auid>=1000 -F auid!=unset -k access
+-a always,exit -F arch=b64 -S creat,open,openat,truncate,ftruncate -F exit=-EPERM -F auid>=1000 -F auid!=unset -k access
+
+# --- Modification configuration réseau ---
+-a always,exit -F arch=b64 -S sethostname,setdomainname -k system-locale
+-w /etc/hosts -p wa -k system-locale
+-w /etc/network/ -p wa -k system-locale
+
+# --- Élévation de privilèges ---
+-w /bin/su -p x -k priv_esc
+-w /usr/bin/sudo -p x -k priv_esc
+
+# --- Verrouillage des règles (DOIT ÊTRE EN DERNIER) ---
+# Une fois chargé, les règles ne peuvent plus être modifiées sans redémarrage.
+# auditctl -D échouera avec "Operation not permitted".
+-e 2

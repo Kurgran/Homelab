@@ -1,0 +1,45 @@
+# SSH Hardening — CIS Debian Linux 12 Benchmark
+# Paramètres à ajouter dans /etc/ssh/sshd_config sur les nœuds Proxmox
+#
+# AVANT d'appliquer :
+#   cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d)
+#
+# Si PermitRootLogin est déjà présent dans le fichier, utiliser sed pour
+# modifier la ligne existante plutôt qu'en ajouter une nouvelle
+# (sshd applique la première occurrence) :
+#   sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+#
+# APRES modification :
+#   sshd -t          # test syntaxe (aucune sortie = OK)
+#   systemctl restart ssh
+#   sshd -T | grep -E 'permitrootlogin|maxauthtries|maxstartups|logingracetime|clientaliveinterval|disableforwarding|banner|allowusers'
+
+# Interdire connexion root par mot de passe (clé SSH autorisée)
+PermitRootLogin prohibit-password
+
+# Limiter les tentatives d'authentification par connexion
+MaxAuthTries 4
+
+# Limiter les connexions simultanées en cours d'authentification
+# Format : start:rate:full (10 connexions, 30% refus aléatoire, max 60)
+MaxStartups 10:30:60
+
+# Délai maximum pour s'authentifier après connexion TCP
+LoginGraceTime 60
+
+# Keepalive : déconnecter les sessions inactives après 15s × 3 = 45s
+ClientAliveInterval 15
+ClientAliveCountMax 3
+
+# Désactiver le forwarding TCP et agent (réduction surface d'attaque)
+DisableForwarding yes
+
+# Bannière légale affichée avant authentification (check CIS 33158)
+Banner /etc/issue.net
+
+# Restreindre les utilisateurs autorisés à se connecter en SSH
+# Adapter selon les comptes réels du système
+AllowUsers root
+
+# Algorithmes MAC autorisés (CIS : uniquement les variantes -etm)
+MACs hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,umac-128-etm@openssh.com
