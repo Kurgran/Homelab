@@ -8,3 +8,7 @@
 # Python (scripts éventuels d'ingestion/test)
 __pycache__/
 venv/
+
+# Notes perso / brouillons à ne pas publier (briefs pour discuter avec une IA, etc.)
+docs/brief-conceptuel-v1.md
+docs/_prive/
