@@ -1,0 +1,10 @@
+# Secrets (V2+ : clé API du backend cloud)
+.env
+*.env
+
+# OS / éditeur
+.DS_Store
+
+# Python (scripts éventuels d'ingestion/test)
+__pycache__/
+venv/
