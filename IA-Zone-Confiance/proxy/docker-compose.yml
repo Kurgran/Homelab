@@ -1,11 +1,21 @@
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    # V1.1 : on ne tire plus l'image officielle telle quelle (`image:`), on la
+    # CONSTRUIT à partir du Dockerfile local (image officielle + detect-secrets).
+    build:
+      context: .              # dossier de build = ./proxy (où vit le Dockerfile)
+      dockerfile: Dockerfile
     container_name: litellm-proxy
     ports:
       - "4000:4000"
     volumes:
+      # Config (déjà là en V1.0), montée en lecture seule.
       - ./litellm-config.yaml:/app/config.yaml:ro
+      # V1.1 : le garde-fou monté dans /app → LiteLLM peut l'importer comme
+      # module `dlp_guardrail`. En volume (pas COPY) = on édite le .py et on
+      # relance le conteneur sans reconstruire l'image. :ro = jamais modifié
+      # par le conteneur.
+      - ./dlp_guardrail.py:/app/dlp_guardrail.py:ro
     command: ["--config", "/app/config.yaml", "--detailed_debug"]
     environment:
       # Contournement issue #9602 : LiteLLM interroge OLLAMA_API_BASE/api/show

@@ -3,3 +3,12 @@ model_list:
     litellm_params:
       model: ollama/mistral:latest   # modèle Ollama ciblé (cf. `docker exec ollama ollama list`)
       api_base: http://ollama:11434   # nom de service Docker, pas localhost
+
+# V1.1 — Garde-fou DLP de détection de secrets.
+guardrails:
+  - guardrail_name: "dlp-detect-secrets"   # nom logique, repris dans les logs/erreurs
+    litellm_params:
+      # chemin d'import : fichier dlp_guardrail.py (monté dans /app) → classe DetectSecretsGuardrail
+      guardrail: dlp_guardrail.DetectSecretsGuardrail
+      mode: "pre_call"        # exécute async_pre_call_hook AVANT le routage = avant la frontière de confiance
+      default_on: true        # s'applique à TOUTES les requêtes → contrôle non contournable
