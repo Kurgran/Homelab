@@ -1,55 +1,59 @@
 """
-V1.1 — Garde-fou DLP : DÉTECTION seule de secrets dans les prompts.
+V1.2 — Garde-fou DLP : MASQUAGE de secrets dans les prompts.
 
 Périmètre verrouillé (cf. Notion) :
-  - on DÉTECTE un secret dans le prompt et on le LOGGE,
-  - on ne masque PAS (c'est la V1.2), on ne bloque PAS.
+  - on DÉTECTE un secret dans le prompt (réutilise les deux passes de V1.1),
+  - on le MASQUE : la valeur ressort caviardée ([SECRET_MASQUE]) côté LLM,
+  - on LOGGE uniquement le TYPE et le compte (jamais la valeur),
+  - un prompt légitime passe INTACT (aucune valeur détectée → aucun remplacement).
 
 Modèle mental : ce fichier N'EST PAS un service réseau. C'est une fonction
 que LiteLLM appelle lui-même, à l'intérieur de son propre process Python,
 AVANT de router le prompt vers Ollama (hook `pre_call`). Un seul conteneur,
 un seul Python = LiteLLM + ce garde-fou + detect-secrets.
 
-Invariant sécurité du projet : jamais de secret en clair dans les logs.
-On ne logge que le TYPE du secret (ex. "AWS Access Key") et le compte,
-jamais sa valeur (`secret.secret_value`).
+Invariant sécurité du projet (NON négociable) : le masquage PRÉCÈDE la
+journalisation. La valeur du secret ne quitte jamais ce hook — on ne logge
+que le TYPE du secret (ex. "AWS Access Key") et le compte, jamais sa valeur.
 
 --------------------------------------------------------------------------
-REFONTE DÉTECTION (option (c) — deux passes séparées et spécialisées)
+ARCHITECTURE DE LA DÉTECTION (inchangée depuis V1.1, option (c))
 
-Pourquoi on n'utilise PLUS `scan.scan_line` :
-  scan_line force le mode *eager* de detect-secrets, qui court-circuite le
-  filtre de seuil d'entropie → chaque mot banal ("TCP", "et", "la") ressort
-  comme "High Entropy String". Faux positifs massifs (vérifié au source 1.5.0).
+Deux passes indépendantes sur la même ligne, puis fusion :
 
-À la place, deux passes indépendantes sur la même ligne, puis fusion :
+  PASSE A — formats connus (regex). On boucle sur les détecteurs de
+    detect-secrets EN EXCLUANT les 2 plugins d'entropie. Chirurgical : ne
+    matche que ce qui a la STRUCTURE d'un secret connu (clé AWS, token
+    GitHub/Stripe…). L'objet PotentialSecret expose la valeur matchée via
+    `.secret_value` (vérifié au source detect-secrets 1.5.0) → c'est cette
+    valeur qu'on masquera.
 
-  PASSE A — formats connus (on délègue à la lib, ce qu'elle fait bien)
-    On boucle sur les détecteurs de detect-secrets EN EXCLUANT les 2 plugins
-    d'entropie. Les détecteurs de format (regex) sont chirurgicaux : ils ne
-    matchent que ce qui a la STRUCTURE d'un secret connu (clé AWS, token
-    GitHub/Stripe…). Eager/non-eager ne les concerne pas (c'est une
-    spécificité des seuls plugins d'entropie).
+  PASSE B — formats inconnus (gate maison longueur + entropie). On tokenise
+    nous-mêmes la ligne ; un token n'est retenu que s'il passe DEUX seuils :
+    longueur >= MIN_TOKEN_LEN ET entropie de Shannon > ENTROPY_THRESHOLD.
+    Ici le TOKEN lui-même EST la valeur à masquer.
 
-  PASSE B — formats inconnus (notre gate maison, la lib ne sait pas le faire
-    proprement en adhoc). On tokenise nous-mêmes la ligne, et on ne retient
-    un token que s'il passe DEUX seuils :
-      (1) longueur >= MIN_TOKEN_LEN  → écarte à bas coût les mots courts
-          (un vrai secret est long ; "TCP" fait 3 caractères). Filtre de
-          FAUX POSITIFS peu risqué : on rate rarement un vrai secret avec ça.
-      (2) entropie de Shannon > ENTROPY_THRESHOLD → distingue une chaîne
-          aléatoire d'un mot long mais structuré. C'est le bouton à double
-          tranchant : trop BAS = faux positifs ; trop HAUT = on rate un vrai
-          secret (faux négatif). On réutilise le calcul d'entropie EXPOSÉ par
-          la lib (pas de réimplémentation maison de la formule).
+--------------------------------------------------------------------------
+NOUVEAUTÉ V1.2 — du « renvoyer les types » au « masquer + logger »
 
-  Division du travail : regex = formats connus / entropie = formats inconnus.
-  « En parallèle » = séparation LOGIQUE (deux filtres dans la même fonction),
-  pas de threads ni d'async.
+  `_scan_line` ne renvoie plus une seule liste de types. Il renvoie DEUX
+  listes séparées par conception :
+    - `values` : les chaînes à MASQUER (servent au remplacement, ne sortent
+       JAMAIS du code, ne sont JAMAIS loggées) ;
+    - `types`  : les libellés à TRACER (seuls à entrer dans le log).
+  Cette séparation rend l'invariant difficile à violer : l'instruction de log
+  ne référence physiquement que `types`. Pour fuiter une valeur il faudrait
+  aller délibérément chercher l'autre liste.
 
-Les deux constantes ci-dessous sont les seuls "boutons" de réglage. À
-documenter comme des ARBITRAGES faux positifs / faux négatifs, pas comme des
-valeurs magiques.
+  Le MASQUAGE se fait dans le hook (le chef d'orchestre), pas dans `_scan_line`
+  (l'ouvrier qui ne voit qu'une ligne). Raison : le hook tient le `content`
+  complet du message ; un `str.replace` sur le contenu entier ignore les
+  retours à la ligne → pas de recollage fragile des lignes.
+
+  On remplace par VALEUR (Route 2), pas par offset/position. La détection nous
+  donne la valeur, pas les colonnes ; et un remplacement par valeur est
+  insensible aux décalages de position (réflexe data : tokenisation par
+  substitution > redaction positionnelle qui casse dès qu'un index bouge).
 """
 
 import re
@@ -84,6 +88,9 @@ MIN_TOKEN_LEN = 20
 # Seuil d'entropie de Shannon (base64). 4.5 = défaut de Base64HighEntropyString
 # dans detect-secrets. Au-dessus = "ça ressemble à de l'aléatoire".
 ENTROPY_THRESHOLD = 4.5
+# Jeton de remplacement. Court, basse entropie, aucun format connu → il ne sera
+# JAMAIS re-flaggé par nos propres passes (pas de boucle de re-détection).
+MASK_TOKEN = "[SECRET_MASQUE]"
 # Découpe une ligne en tokens "candidats secrets" : on coupe sur tout ce qui
 # n'appartient PAS à l'alphabet base64/url-safe. Les espaces, ponctuation, etc.
 # deviennent des séparateurs → "Ma cle est AKIA..." donne ["Ma","cle","est","AKIA..."].
@@ -101,36 +108,44 @@ class DetectSecretsGuardrail(CustomGuardrail):
         # (guardrail_name, mode, default_on… injectés depuis la config).
         super().__init__(**kwargs)
 
-    def _scan_line(self, line: str, format_plugins) -> list:
+    def _scan_line(self, line: str, format_plugins) -> tuple:
         """
-        Scanne UNE ligne et renvoie une liste de TYPES de secrets (jamais les
-        valeurs). Combine la passe A (formats) et la passe B (entropie maison).
+        Scanne UNE ligne et renvoie DEUX listes parallèles :
+          - values : les chaînes exactes à masquer (servent au remplacement) ;
+          - types  : les libellés correspondants (seuls à être loggés).
+        Les deux listes sont alignées par index (values[i] ↔ types[i]) mais on
+        ne les manipule jamais ensemble dans le log — c'est tout l'intérêt.
         `format_plugins` = liste pré-filtrée des détecteurs non-entropie.
         """
-        found_types = []
+        values = []
+        types = []
 
         # PASSE A — formats connus (regex). analyze_line renvoie un set de
-        # PotentialSecret ; on ne garde que .type, jamais .secret_value.
+        # PotentialSecret ; on prend .secret_value (à masquer) ET .type (à logger).
         for plugin in format_plugins:
             for secret in plugin.analyze_line(
                 filename="adhoc-prompt-scan",  # nom factice : pas de fichier réel
                 line=line,
                 line_number=0,
             ):
-                found_types.append(secret.type)
+                if secret.secret_value:  # garde-fou : jamais de remplacement de ""
+                    values.append(secret.secret_value)
+                    types.append(secret.type)
 
         # PASSE B — formats inconnus (gate maison longueur + entropie).
+        # Ici le token lui-même est la valeur à masquer.
         for token in _TOKEN_SPLIT.split(line):
             if len(token) < MIN_TOKEN_LEN:
                 continue  # trop court → mot de langage naturel, on jette
             if _ENTROPY_CALC.calculate_shannon_entropy(token) > ENTROPY_THRESHOLD:
-                found_types.append(_ENTROPY_LABEL)
+                values.append(token)
+                types.append(_ENTROPY_LABEL)
 
-        return found_types
+        return values, types
 
     async def async_pre_call_hook(
         self,
-        user_api_key_dict: UserAPIKeyAuth,   # qui a appelé (identité) — non utilisé en V1.1
+        user_api_key_dict: UserAPIKeyAuth,   # qui a appelé (identité) — non utilisé ici
         cache: DualCache,                    # cache partagé LiteLLM — non utilisé ici
         data: dict,                          # LA requête : data["messages"] = le prompt
         call_type: Literal[
@@ -145,12 +160,13 @@ class DetectSecretsGuardrail(CustomGuardrail):
         ],
     ) -> Optional[Union[Exception, str, dict]]:
         """
-        Appelé par LiteLLM AVANT le routage. On lit les messages, on scanne
-        chaque ligne, on logge les détections. On renvoie `data` INCHANGÉ
-        (détection seule). Renvoyer data tel quel = laisser passer la requête.
+        Appelé par LiteLLM AVANT le routage. On scanne chaque message, on
+        REMPLACE chaque valeur détectée par [SECRET_MASQUE] dans le contenu,
+        puis (et seulement après) on logge les TYPES. On renvoie `data` MUTÉ :
+        c'est la version caviardée qui franchit la frontière de confiance.
         """
         messages = data.get("messages", [])
-        findings = []  # on n'y stocke QUE des types de secrets, jamais les valeurs
+        all_types = []  # ne contient QUE des types de secrets, jamais de valeur
 
         # Le contexte charge/décharge proprement les plugins autour du scan.
         with default_settings():
@@ -163,27 +179,40 @@ class DetectSecretsGuardrail(CustomGuardrail):
 
             for message in messages:
                 content = message.get("content")
-                # Un message peut être multimodal (liste) ; en V1.1 on ne traite
-                # que le texte simple. Le reste est ignoré (pas une erreur).
+                # Un message peut être multimodal (liste) ; on ne traite que le
+                # texte simple. Le reste est ignoré (pas une erreur).
                 if not isinstance(content, str):
                     continue
-                # On scanne ligne par ligne : l'entropie d'une ligne entière
-                # serait diluée, et nos tokens doivent rester isolés.
-                for line in content.splitlines():
-                    findings.extend(self._scan_line(line, format_plugins))
 
-        if findings:
-            # WARNING : visible même hors --detailed_debug. On logge le COMPTE
-            # et les TYPES — surtout pas secret.secret_value.
+                # 1) DÉTECTION : on collecte valeurs + types sur tout le message.
+                msg_values = []  # valeurs de CE message — locales, jamais loggées
+                for line in content.splitlines():
+                    values, types = self._scan_line(line, format_plugins)
+                    msg_values.extend(values)
+                    all_types.extend(types)
+
+                # 2) MASQUAGE (avant tout log) : on remplace chaque valeur dans
+                #    le contenu complet. On déduplique et on traite les plus
+                #    longues d'abord — si une valeur est sous-chaîne d'une autre,
+                #    on évite de corrompre le remplacement de la plus longue.
+                if msg_values:
+                    masked = content
+                    for value in sorted(set(msg_values), key=len, reverse=True):
+                        masked = masked.replace(value, MASK_TOKEN)
+                    # Réécriture in place → data["messages"] est muté pour LiteLLM.
+                    message["content"] = masked
+
+        # 3) JOURNALISATION : APRÈS le masquage, et sur les TYPES uniquement.
+        if all_types:
             verbose_proxy_logger.warning(
-                "DLP detect-secrets : %d secret(s) détecté(s) dans le prompt — types=%s",
-                len(findings),
-                findings,
+                "DLP detect-secrets : %d secret(s) masqué(s) dans le prompt — types=%s",
+                len(all_types),
+                all_types,
             )
         else:
             verbose_proxy_logger.debug(
                 "DLP detect-secrets : aucun secret détecté dans le prompt"
             )
 
-        # V1.1 = détection seule : aucune altération, aucun blocage.
+        # On renvoie la requête MUTÉE : le prompt caviardé part vers le backend.
         return data
