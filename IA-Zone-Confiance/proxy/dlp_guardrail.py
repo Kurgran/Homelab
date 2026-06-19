@@ -1,5 +1,5 @@
 """
-V1.2 — Garde-fou DLP : MASQUAGE de secrets dans les prompts.
+V1.3 — Garde-fou DLP : MASQUAGE de secrets + JOURNALISATION JSON structurée.
 
 Périmètre verrouillé (cf. Notion) :
   - on DÉTECTE un secret dans le prompt (réutilise les deux passes de V1.1),
@@ -56,7 +56,9 @@ NOUVEAUTÉ V1.2 — du « renvoyer les types » au « masquer + logger »
   substitution > redaction positionnelle qui casse dès qu'un index bouge).
 """
 
+import json
 import re
+from datetime import datetime, timezone
 from typing import Literal, Optional, Union
 
 # Briques LiteLLM : la classe de base à hériter, les types attendus par le hook,
@@ -203,13 +205,36 @@ class DetectSecretsGuardrail(CustomGuardrail):
                     message["content"] = masked
 
         # 3) JOURNALISATION : APRÈS le masquage, et sur les TYPES uniquement.
+        #    V1.3 — on n'émet plus un message texte mais un ÉVÉNEMENT JSON
+        #    structuré. Le dict ne contient QUE des champs non sensibles :
+        #    la valeur du secret n'a littéralement aucune clé où atterrir
+        #    (garantie structurelle, prolongement des deux listes de V1.2).
         if all_types:
-            verbose_proxy_logger.warning(
-                "DLP detect-secrets : %d secret(s) masqué(s) dans le prompt — types=%s",
-                len(all_types),
-                all_types,
-            )
+            event = {
+                # Marqueur FIXE : c'est sur cette valeur que le decoder Wazuh
+                # (V6) reconnaîtra une détection DLP, sans matcher du texte fragile.
+                "event": "dlp_secret_detected",
+                # Horodatage ISO 8601 en UTC, posé par nous : pas d'ambiguïté de
+                # fuseau quand le log voyagera vers Wazuh (autre VLAN/serveur).
+                "ts": datetime.now(timezone.utc).isoformat(),
+                # Combien de hits sur ce prompt (≠ nombre de secrets distincts,
+                # nuance de métrique notée pour le dashboard V5).
+                "secret_count": len(all_types),
+                # Libellés des types détectés UNIQUEMENT (jamais les valeurs).
+                "secret_types": all_types,
+                # Modèle ciblé tel que reçu dans la requête (alias de la config,
+                # ex. "local-llama"). .get() = pas de KeyError si absent.
+                "model": data.get("model"),
+            }
+            # json.dumps SÉRIALISE le dict en chaîne JSON valide (échappement des
+            # caractères spéciaux géré par la lib → toujours parsable).
+            # ensure_ascii=False : on garde les accents lisibles (é, è) au lieu
+            # de séquences \uXXXX. WARNING = niveau "événement à remonter".
+            verbose_proxy_logger.warning(json.dumps(event, ensure_ascii=False))
         else:
+            # Prompt légitime : AUCUN événement de détection émis (critère V1.3 :
+            # "pas de faux événement"). On reste en DEBUG texte simple, qui ne
+            # pollue pas le flux que Wazuh écoutera (il ne ciblera que le JSON).
             verbose_proxy_logger.debug(
                 "DLP detect-secrets : aucun secret détecté dans le prompt"
             )
