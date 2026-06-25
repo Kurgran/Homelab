@@ -17,6 +17,11 @@ services:
       # par le conteneur.
       - ./dlp_guardrail.py:/app/dlp_guardrail.py:ro
     command: ["--config", "/app/config.yaml", "--detailed_debug"]
+    # V2.0 : injecte les variables du fichier .env (dont MISTRAL_API_KEY) DANS le
+    # conteneur, où LiteLLM les lit via `os.environ/...`. Le chemin est relatif à
+    # ce docker-compose.yml → ./proxy/.env, qui est gitignored (jamais dans Git).
+    env_file:
+      - .env
     environment:
       # Contournement issue #9602 : LiteLLM interroge OLLAMA_API_BASE/api/show
       # pour les infos du modèle, parfois en ignorant l'api_base du fichier.

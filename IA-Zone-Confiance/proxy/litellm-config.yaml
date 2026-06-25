@@ -4,6 +4,15 @@ model_list:
       model: ollama/mistral:latest   # modèle Ollama ciblé (cf. `docker exec ollama ollama list`)
       api_base: http://ollama:11434   # nom de service Docker, pas localhost
 
+  # V2.0 — Second backend : LLM cloud Mistral (La Plateforme), derrière le MÊME proxy.
+  # Point clé : le garde-fou DLP ci-dessous est en pre_call + default_on:true → il
+  # s'exécute AVANT le routage, donc ce backend cloud hérite du masquage SANS config
+  # supplémentaire. Un seul contrôle, en amont de la bifurcation local/cloud.
+  - model_name: cloud-mistral
+    litellm_params:
+      model: mistral/mistral-small-latest   # provider natif LiteLLM (préfixe mistral/) → endpoint Mistral par défaut, aucun api_base à poser
+      api_key: "os.environ/MISTRAL_API_KEY" # LiteLLM lit la clé dans l'ENV ; la VALEUR n'est jamais écrite dans ce fichier versionné
+
 # V1.1 — Garde-fou DLP de détection de secrets.
 guardrails:
   - guardrail_name: "dlp-detect-secrets"   # nom logique, repris dans les logs/erreurs
